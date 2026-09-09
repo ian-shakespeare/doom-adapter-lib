@@ -1,0 +1,1 @@
+../../vendor/w_file_stdc.c
