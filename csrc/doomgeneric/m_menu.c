@@ -2022,7 +2022,19 @@ void M_Drawer (void)
 
 	if (name[0])
 	{
-	    V_DrawPatchDirect (x, y, W_CacheLumpName(name, PU_CACHE));
+	    // BUGFIX: some (non-standard/incomplete) IWADs report enough
+	    // map lumps to be auto-detected as a later game version (e.g.
+	    // Ultimate Doom, which unlocks the 4th episode menu entry) but
+	    // are still missing the corresponding menu graphic lump (e.g.
+	    // M_EPI4). The original code unconditionally called
+	    // W_CacheLumpName, which resolves to a fatal I_Error via
+	    // W_GetNumForName if the lump is absent, crashing the whole
+	    // menu. Skip drawing menu items whose graphic isn't present
+	    // instead of treating it as a fatal error.
+	    if (W_CheckNumForName(name) >= 0)
+	    {
+		V_DrawPatchDirect (x, y, W_CacheLumpName(name, PU_CACHE));
+	    }
 	}
 	y += LINEHEIGHT;
     }
