@@ -14,6 +14,7 @@ import (
 	_ "embed"
 	"fmt"
 	"image"
+	"os"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -93,6 +94,8 @@ func New(wadPath string) (*Game, error) {
 		WithName(name).
 		WithSysWalltime().
 		WithSysNanotime().
+		WithStdout(os.Stdout).
+		WithStderr(os.Stderr).
 		WithFSConfig(wazero.NewFSConfig().WithReadOnlyDirMount(dir, guestWadDir))
 
 	mod, err := sharedRuntime.InstantiateModule(ctx, compiledModule, cfg)
