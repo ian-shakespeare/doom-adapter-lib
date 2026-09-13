@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/tetratelabs/wazero"
@@ -104,6 +105,55 @@ func TestMultipleInstancesAreIsolated(t *testing.T) {
 	}
 	if _, _, ok := testGetKey(t, a); !ok {
 		t.Fatal("instance a did not see its own pushed key")
+	}
+}
+
+// TestFatalEngineErrorDoesNotTrap is a regression test for a real crash:
+// doomgeneric's I_Error/I_Quit run a list of shutdown callbacks
+// (atexit_func_t, "void(void)"), one of which upstream registers via
+// `I_AtExit((atexit_func_t) G_CheckDemoStatus, true)` — a bare cast papering
+// over a genuine return-type mismatch (G_CheckDemoStatus actually returns
+// boolean). That's harmless UB on native targets (the return value is just
+// ignored in a register) but wasm validates indirect-call signatures
+// (including result types) at runtime, so it trapped with "indirect call
+// type mismatch" instead of reporting the intended fatal error — meaning
+// *any* fatal engine error (missing lump, bad WAD, ...) crashed
+// unrecoverably instead of failing cleanly. Fixed in d_main.c by routing
+// through a same-signature wrapper.
+//
+// The callback list is only populated partway through doomgeneric_Create
+// (a real IWAD must load successfully first), so this needs a real WAD
+// (DOOMADAPTER_TEST_WAD) to actually exercise the fixed path — testing
+// against a bad WAD path alone is a false negative, since D_DoomMain fails
+// before ever registering the callback. It forces the exact failure
+// (missing lump lookup -> I_Error -> shutdown callbacks) via
+// W_GetNumForName, exported from wasm for this purpose (see build-wasm.sh).
+func TestFatalEngineErrorDoesNotTrap(t *testing.T) {
+	wad := os.Getenv("DOOMADAPTER_TEST_WAD")
+	if wad == "" {
+		t.Skip("set DOOMADAPTER_TEST_WAD to a doom .wad path to run this test")
+	}
+
+	g, err := New(wad)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+
+	ctx := context.Background()
+	nameArg, err := g.mod.ExportedFunction("doomadapter_alloc").Call(ctx, 32)
+	if err != nil {
+		t.Fatalf("alloc: %v", err)
+	}
+	ptr := uint32(nameArg[0])
+	g.mod.Memory().Write(ptr, append([]byte("NONEXISTENT_LUMP_XYZ"), 0))
+
+	_, err = g.mod.ExportedFunction("W_GetNumForName").Call(ctx, uint64(ptr))
+	if err == nil {
+		t.Fatal("expected an error for a missing lump, got nil")
+	}
+	if strings.Contains(err.Error(), "indirect call type mismatch") {
+		t.Fatalf("regression: fatal engine error trapped instead of failing cleanly: %v", err)
 	}
 }
 

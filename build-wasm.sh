@@ -13,6 +13,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 
 zig cc --target=wasm32-wasi -Os -mexec-model=reactor \
   -Wl,--export=doomgeneric_Create -Wl,--export=doomgeneric_Tick \
+  -Wl,--export=W_GetNumForName \
   csrc/doomgeneric/*.c \
   -o pkg/doomadapter/build/doom.wasm
 

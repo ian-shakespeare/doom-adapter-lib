@@ -1157,6 +1157,12 @@ static void LoadIwadDeh(void)
 }
 #endif
 
+// See the BUGFIX (wasm) comment at its call site in D_DoomMain.
+static void G_CheckDemoStatusAtExit(void)
+{
+    G_CheckDemoStatus();
+}
+
 //
 // D_DoomMain
 //
@@ -1510,7 +1516,15 @@ void D_DoomMain (void)
         printf("Playing demo %s.\n", file);
     }
 
-    I_AtExit((atexit_func_t) G_CheckDemoStatus, true);
+    // BUGFIX (wasm): I_AtExit expects a plain void(*)(void) (atexit_func_t),
+    // but G_CheckDemoStatus actually returns boolean. The original upstream
+    // code papered over this with a bare cast, which is harmless UB on
+    // native targets (the return value is simply ignored in a register)
+    // but is a hard `call_indirect` trap under wasm, where indirect calls
+    // are validated against the callee's real signature (including its
+    // result type) at runtime. Call through a same-signature wrapper
+    // instead of casting away the mismatch.
+    I_AtExit(G_CheckDemoStatusAtExit, true);
 
     // Generate the WAD hash table.  Speed things up a bit.
     W_GenerateHashTable();
